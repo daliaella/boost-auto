@@ -1,0 +1,46 @@
+name: Boost auto-register
+
+# רץ בענן כל 5 דקות (וגם אפשר להריץ ידנית מלשונית Actions)
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: boost-register
+  cancel-in-progress: false
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run auto-register
+        env:
+          BOOST_TOKEN: ${{ secrets.BOOST_TOKEN }}
+          BOOST_CALENDAR_ICS_URL: ${{ secrets.BOOST_CALENDAR_ICS_URL }}
+        run: python boost_register.py --once
+
+      # שומר את הריפו "פעיל" כדי שגיטהאב לא ישבית את התזמון אחרי 60 יום (commit יומי אחד)
+      - name: Keepalive
+        if: always()
+        run: |
+          date -u +%F > last-run.txt
+          if ! git diff --quiet last-run.txt 2>/dev/null; then
+            git config user.name "boost-bot"
+            git config user.email "boost-bot@users.noreply.github.com"
+            git add last-run.txt
+            git commit -m "keepalive $(date -u +%F)"
+            git push
+          fi
