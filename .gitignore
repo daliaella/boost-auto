@@ -1,0 +1,5 @@
+# לעולם לא להעלות פרטים רגישים או קבצים מקומיים לענן
+config.json
+register_log.txt
+*.ics
+_*.ics
