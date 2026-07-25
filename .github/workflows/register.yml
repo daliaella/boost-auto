@@ -1,14 +1,19 @@
 name: Boost auto-register
 
-# רץ בענן כל 5 דקות (וגם אפשר להריץ ידנית מלשונית Actions)
+# רישום נפתח בדיוק 14 יום מראש בשעת השיעור (08:15). לכן אין טעם לרוץ כל היום —
+# מספיק לרוץ בבקרי ראשון ושני, ובחלון הזה לבדוק כל דקה כדי לתפוס את הרגע המדויק.
+#
+# התזמון למטה הוא ב-UTC. ישראל היא UTC+3 (קיץ) / UTC+2 (חורף), לכן החלון 04:00–06:30 UTC
+# מכסה בערך 07:00–09:30 בבוקר שעון ישראל — כולל 08:15 בשתי העונות, עם מרווח ביטחון גדול.
 on:
   schedule:
-    - cron: "*/5 * * * *"
-  workflow_dispatch:
+    - cron: "*/30 4-6 * * 0,1"   # ראשון(0) ושני(1), כל 30 דק' בין 04:00–06:30 UTC
+  workflow_dispatch:              # אפשר גם להריץ ידנית מלשונית Actions
 
 permissions:
   contents: write
 
+# ריצה אחת בכל פעם (מונע הרצות מקבילות מיותרות)
 concurrency:
   group: boost-register
   cancel-in-progress: false
@@ -16,6 +21,7 @@ concurrency:
 jobs:
   register:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -26,11 +32,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run auto-register
+      # "התקפה ממוקדת": בודק כל דקה למשך ~29 דקות, כדי לתפוס את הפתיחה מיד
+      - name: Run auto-register (burst)
         env:
           BOOST_TOKEN: ${{ secrets.BOOST_TOKEN }}
           BOOST_CALENDAR_ICS_URL: ${{ secrets.BOOST_CALENDAR_ICS_URL }}
-        run: python boost_register.py --once
+        run: |
+          end=$((SECONDS + 1740))   # ~29 דקות
+          while [ $SECONDS -lt $end ]; do
+            python boost_register.py --once || echo "iteration error (continuing)"
+            sleep 60
+          done
 
       # שומר את הריפו "פעיל" כדי שגיטהאב לא ישבית את התזמון אחרי 60 יום (commit יומי אחד)
       - name: Keepalive
