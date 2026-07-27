@@ -48,6 +48,7 @@ API_KEY = "mSjKwbvjsqFTbJyqoiQVItBcuZBzndkL"
 HERE = Path(__file__).resolve().parent
 CONFIG_PATH = HERE / "config.json"
 LOG_PATH = HERE / "register_log.txt"
+HISTORY_PATH = HERE / "registered_history.json"  # שיעורים שהתוכנה רשמה - לזיהוי ביטולים ידניים
 
 # מספר יום בשבוע -> שם עברי (Python: שני=0 ... ראשון=6)
 HEB_DAYS = {
@@ -286,6 +287,26 @@ def is_free_at(cfg, cls):
     return True, "פנויה ביומן"
 
 
+def load_history():
+    """טוען את רשימת השיעורים שהתוכנה רשמה בעבר: {class_id: 'YYYY-MM-DD'}."""
+    try:
+        with open(HISTORY_PATH, encoding="utf-8") as f:
+            return {int(k): v for k, v in json.load(f).items()}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_history(history):
+    """שומר את ההיסטוריה, תוך ניקוי רשומות של שיעורים שכבר עברו."""
+    today = date.today().isoformat()
+    pruned = {str(k): v for k, v in history.items() if v >= today}
+    try:
+        with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+            json.dump(pruned, f, ensure_ascii=False, indent=1)
+    except OSError as e:
+        log(f"אזהרה: לא הצלחתי לשמור את קובץ ההיסטוריה ({e})")
+
+
 def class_matches_target(cls, targets):
     """האם השיעור תואם אחת מהגדרות המטרה? מחזיר את הגדרת המטרה התואמת או None."""
     for t in targets:
@@ -365,6 +386,7 @@ def do_run(cfg, dry_run=False):
 
     classes = fetch_schedule(cfg)
     my_ids = get_my_registered_ids(cfg)
+    history = load_history()
     registered_now = 0
 
     for cls in classes:
@@ -374,7 +396,17 @@ def do_run(cfg, dry_run=False):
         label = f"{cls['weekday']} {cls['date'].strftime('%d.%m')} {cls['time']} {cls['name']}"
 
         if cls["id"] in my_ids:
-            continue  # כבר רשומה - דילוג שקט
+            # רשומה כרגע. אם הרישום לא בהיסטוריה (למשל נרשמה ידנית) - נוסיף,
+            # כדי שביטול עתידי שלה יזוהה ולא נירשם שוב.
+            if cls["id"] not in history:
+                history[cls["id"]] = cls["date"].isoformat()
+                save_history(history)
+            continue
+        if cls["id"] in history:
+            # נרשמה לשיעור הזה בעבר וכעת אינה רשומה => היא ביטלה בעצמה.
+            # מכבדים את הביטול ולא נרשמים שוב.
+            log(f"  🚫 מדלגת על {label} — היית רשומה וביטלת, לא נרשמת שוב.")
+            continue
         if cls["full"]:
             log(f"  [{label}] מלא כרגע - מדלג (אפשר להוסיף רישום להמתנה בהמשך).")
             continue
@@ -393,6 +425,8 @@ def do_run(cfg, dry_run=False):
         ok, msg = register_class(cfg, cls)
         if ok:
             log(f"  ✅ נרשמת ל: {label}  — {msg}")
+            history[cls["id"]] = cls["date"].isoformat()
+            save_history(history)
             registered_now += 1
         else:
             log(f"  ❌ לא נרשמת ל: {label}  — {msg}")
