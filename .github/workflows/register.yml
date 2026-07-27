@@ -2,12 +2,12 @@ name: Boost auto-register
 
 # שני מנגנונים משלימים (הזמנים ב-UTC; ישראל = UTC+3 בקיץ / UTC+2 בחורף):
 # 1. בדיקה מהירה כל שעה, 24/7 - רשת ביטחון שתופסת כל שיעור חדש תוך שעה לכל היותר.
-# 2. "התקפה ממוקדת" בבקרי ראשון ושני (04:00-07:30 UTC = ~07:00-10:30 בישראל) -
+# 2. "התקפה ממוקדת" בבקרי ראשון, שני ושלישי (04:00-07:30 UTC = ~07:00-10:30 בישראל) -
 #    בדיקה כל דקה סביב שעת הפתיחה הצפויה (08:15), לתפיסה תוך שניות.
 on:
   schedule:
     - cron: "7 * * * *"          # כל שעה בדקה 07 - בדיקה מהירה אחת
-    - cron: "*/30 4-7 * * 0,1"   # ראשון+שני בבוקר - סבבי סריקה צמודים
+    - cron: "*/30 4-7 * * 0,1,2"   # ראשון+שני+שלישי בבוקר - סבבי סריקה צמודים
   workflow_dispatch:
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
           BOOST_CALENDAR_ICS_URL: ${{ secrets.BOOST_CALENDAR_ICS_URL }}
           TRIGGER: ${{ github.event.schedule }}
         run: |
-          if [ "$TRIGGER" = "*/30 4-7 * * 0,1" ]; then
+          if [ "$TRIGGER" = "*/30 4-7 * * 0,1,2" ]; then
             echo "Burst mode: polling every 60s for ~29 minutes"
             end=$((SECONDS + 1740))
             while [ $SECONDS -lt $end ]; do
