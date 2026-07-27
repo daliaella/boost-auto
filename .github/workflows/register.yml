@@ -49,15 +49,15 @@ jobs:
             python boost_register.py --once
           fi
 
-      # שומר את הריפו "פעיל" כדי שגיטהאב לא ישבית את התזמון אחרי 60 יום
-      - name: Keepalive
+      # שמירת מצב: היסטוריית הרישומים (לזיהוי ביטולים) + שמירה על פעילות הריפו
+      - name: Save state
         if: always()
         run: |
           date -u +%F > last-run.txt
-          if ! git diff --quiet last-run.txt 2>/dev/null; then
+          if ! git diff --quiet last-run.txt registered_history.json 2>/dev/null || [ -n "$(git status --porcelain registered_history.json)" ]; then
             git config user.name "boost-bot"
             git config user.email "boost-bot@users.noreply.github.com"
-            git add last-run.txt
-            git commit -m "keepalive $(date -u +%F)"
+            git add last-run.txt registered_history.json 2>/dev/null || git add last-run.txt
+            git commit -m "state update $(date -u +%F)"
             git push
           fi
