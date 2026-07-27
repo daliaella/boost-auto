@@ -1,19 +1,18 @@
 name: Boost auto-register
 
-# רישום נפתח בדיוק 14 יום מראש בשעת השיעור (08:15). לכן אין טעם לרוץ כל היום —
-# מספיק לרוץ בבקרי ראשון ושני, ובחלון הזה לבדוק כל דקה כדי לתפוס את הרגע המדויק.
-#
-# התזמון למטה הוא ב-UTC. ישראל היא UTC+3 (קיץ) / UTC+2 (חורף), לכן החלון 04:00–06:30 UTC
-# מכסה בערך 07:00–09:30 בבוקר שעון ישראל — כולל 08:15 בשתי העונות, עם מרווח ביטחון גדול.
+# שני מנגנונים משלימים (הזמנים ב-UTC; ישראל = UTC+3 בקיץ / UTC+2 בחורף):
+# 1. בדיקה מהירה כל שעה, 24/7 - רשת ביטחון שתופסת כל שיעור חדש תוך שעה לכל היותר.
+# 2. "התקפה ממוקדת" בבקרי ראשון ושני (04:00-07:30 UTC = ~07:00-10:30 בישראל) -
+#    בדיקה כל דקה סביב שעת הפתיחה הצפויה (08:15), לתפיסה תוך שניות.
 on:
   schedule:
-    - cron: "*/30 4-6 * * 0,1"   # ראשון(0) ושני(1), כל 30 דק' בין 04:00–06:30 UTC
-  workflow_dispatch:              # אפשר גם להריץ ידנית מלשונית Actions
+    - cron: "7 * * * *"          # כל שעה בדקה 07 - בדיקה מהירה אחת
+    - cron: "*/30 4-7 * * 0,1"   # ראשון+שני בבוקר - סבבי סריקה צמודים
+  workflow_dispatch:
 
 permissions:
   contents: write
 
-# ריצה אחת בכל פעם (מונע הרצות מקבילות מיותרות)
 concurrency:
   group: boost-register
   cancel-in-progress: false
@@ -32,19 +31,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # "התקפה ממוקדת": בודק כל דקה למשך ~29 דקות, כדי לתפוס את הפתיחה מיד
-      - name: Run auto-register (burst)
+      - name: Run auto-register
         env:
           BOOST_TOKEN: ${{ secrets.BOOST_TOKEN }}
           BOOST_CALENDAR_ICS_URL: ${{ secrets.BOOST_CALENDAR_ICS_URL }}
+          TRIGGER: ${{ github.event.schedule }}
         run: |
-          end=$((SECONDS + 1740))   # ~29 דקות
-          while [ $SECONDS -lt $end ]; do
-            python boost_register.py --once || echo "iteration error (continuing)"
-            sleep 60
-          done
+          if [ "$TRIGGER" = "*/30 4-7 * * 0,1" ]; then
+            echo "Burst mode: polling every 60s for ~29 minutes"
+            end=$((SECONDS + 1740))
+            while [ $SECONDS -lt $end ]; do
+              python boost_register.py --once || echo "iteration error (continuing)"
+              sleep 60
+            done
+          else
+            echo "Single-pass mode"
+            python boost_register.py --once
+          fi
 
-      # שומר את הריפו "פעיל" כדי שגיטהאב לא ישבית את התזמון אחרי 60 יום (commit יומי אחד)
+      # שומר את הריפו "פעיל" כדי שגיטהאב לא ישבית את התזמון אחרי 60 יום
       - name: Keepalive
         if: always()
         run: |
