@@ -160,17 +160,38 @@ def api_get(path, token):
 # לוגיקה עסקית
 # ------------------------------------------------------------------
 def fetch_schedule(cfg):
-    """שולף את כל השיעורים בחלון ה-14 ימים. מחזיר רשימת dict-ים מנורמלים."""
+    """שולף את כל השיעורים בחלון הרישום המלא (14 יום). מחזיר רשימת dict-ים מנורמלים.
+
+    חשוב: השרת מחזיר לכל בקשה רק כ-12 ימים החל מ-start_date, ולכן שליפה אחת
+    "מהיום" מפספסת את הימים 13-14 - בדיוק הימים שבהם שיעור חדש נפתח!
+    לכן שולפים פעמיים (מהיום, ומיום 11 והלאה) ומאחדים.
+    """
     today = date.today()
-    payload = {
-        "company": str(cfg["company"]),
-        "source": str(cfg["source"]),
-        "fromLee": True,
-        "startDate": today.isoformat(),
-        "endDate": today.isoformat(),  # ה-API מתעלם וממילא מחזיר 14 יום
-    }
-    data = api_post("/services/get-class-schedule/", cfg["token"], payload)
-    classes = data.get("classes", []) or []
+    windows = [
+        (today, today + timedelta(days=16)),
+        (today + timedelta(days=11), today + timedelta(days=16)),
+    ]
+    by_id = {}
+    for sd, ed in windows:
+        payload = {
+            "company": str(cfg["company"]),
+            "source": str(cfg["source"]),
+            "fromLee": True,
+            "start_date": sd.isoformat(),
+            "end_date": ed.isoformat(),
+        }
+        try:
+            data = api_post("/services/get-class-schedule/", cfg["token"], payload)
+        except RuntimeError as e:
+            # אם השליפה השנייה נכשלת - ממשיכים עם מה שיש מהראשונה
+            if by_id:
+                log(f"אזהרה: שליפת חלון עתידי נכשלה ({e}) - ממשיך עם החלון הראשי.")
+                continue
+            raise
+        for c in (data.get("classes", []) or []):
+            if c.get("id") is not None:
+                by_id[c["id"]] = c
+    classes = list(by_id.values())
     out = []
     for c in classes:
         try:
